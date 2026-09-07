@@ -132,7 +132,7 @@ export const agentToolDeclarations: FunctionDeclaration[] = [
   },
   {
     name: 'finalize_bill',
-    description: 'Finalize current DRAFT bill inside atomic transaction. Checks stock availability, deducts stock, calculates CGST/SGST, and records payment method (CASH, UPI, CARD, CREDIT). Do NOT call add_bill_item or update_bill_item before calling this if draft bill is ready.',
+    description: 'Finalize current DRAFT bill inside atomic transaction. Checks stock availability, deducts stock, calculates CGST/SGST, records payment method (CASH, UPI, CARD, CREDIT), and automatically generates and attaches the official GST Tax Invoice PDF file. Do NOT ask the user if they want a PDF invoice.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {

@@ -54,12 +54,31 @@ bot.catch((err) => {
   console.error('Unhandled Bot Error:', err.error);
 });
 
+import { execSync } from 'child_process';
+import prisma from './db/prisma';
+
 // Start bot if executed directly
 if (require.main === module) {
-  console.log('🤖 NovaMart AI Supermarket Operations Bot is starting...');
-  bot.start({
-    onStart: (botInfo) => {
-      console.log(`✅ NovaMart Bot @${botInfo.username} is active and listening for messages!`);
-    },
-  });
+  (async () => {
+    console.log('🤖 NovaMart AI Supermarket Operations Bot is starting...');
+
+    // Auto-create database tables on fresh server deployment (Railway / Render / VPS)
+    try {
+      console.log('🔄 Ensuring SQLite database schema & tables exist...');
+      execSync('npx prisma db push --skip-generate', { stdio: 'inherit' });
+      const count = await prisma.product.count().catch(() => 0);
+      if (count === 0) {
+        console.log('🌱 Fresh database detected. Seeding initial NovaMart products...');
+        execSync('npx ts-node prisma/seed.ts', { stdio: 'inherit' });
+      }
+    } catch (err: any) {
+      console.warn('⚠️ DB Auto-Setup Notice:', err.message || err);
+    }
+
+    bot.start({
+      onStart: (botInfo) => {
+        console.log(`✅ NovaMart Bot @${botInfo.username} is active and listening for messages!`);
+      },
+    });
+  })();
 }
