@@ -1,0 +1,47 @@
+{
+  "name": "tele-bot",
+  "version": "1.0.0",
+  "description": "NovaMart - AI Supermarket Operations Agent Telegram Bot",
+  "main": "dist/bot.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/bot.ts",
+    "build": "tsc",
+    "start": "node dist/bot.js",
+    "seed": "ts-node prisma/seed.ts",
+    "test": "ts-node test/services.test.ts",
+    "test:e2e": "ts-node scratch/e2e-test.ts",
+    "prisma:migrate": "prisma db push",
+    "prisma:studio": "prisma studio"
+  },
+  "keywords": [
+    "telegram",
+    "ai",
+    "supermarket",
+    "novamart",
+    "agent",
+    "grammy",
+    "prisma",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.19.0",
+    "@prisma/client": "^5.19.1",
+    "dotenv": "^16.4.5",
+    "grammy": "^1.29.0",
+    "pdfkit": "^0.15.0",
+    "pptxgenjs": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "@types/pdfkit": "^0.13.4",
+    "prisma": "^5.19.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  }
+}

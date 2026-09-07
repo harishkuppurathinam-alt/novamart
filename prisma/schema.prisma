@@ -1,0 +1,112 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          Int          @id @default(autoincrement())
+  telegramId  String       @unique
+  username    String?
+  firstName   String?
+  lastName    String?
+  bills       Bill[]
+  preferences Preference[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Product {
+  id            Int        @id @default(autoincrement())
+  name          String
+  description   String?
+  sku           String     @unique
+  category      String
+  unit          String     @default("pcs") // pcs, kg, g, l, ml, pack
+  costPrice     Float      @default(0.0)
+  sellingPrice  Float      // Unit selling price in INR
+  mrp           Float      // MRP in INR
+  gstRate       Float      @default(5.0) // GST percentage (e.g., 5.0, 12.0, 18.0)
+  stockQuantity Int        @default(0)
+  reorderLevel  Int        @default(10)
+  active        Boolean    @default(true)
+  billItems     BillItem[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([name])
+  @@index([category])
+}
+
+model Bill {
+  id            Int        @id @default(autoincrement())
+  billNumber    String     @unique // e.g., SM-10001
+  userId        Int?
+  user          User?      @relation(fields: [userId], references: [id])
+  customerName  String?    @default("Walk-in Customer")
+  status        String     @default("DRAFT") // DRAFT, FINALIZED, CANCELLED
+  paymentMethod String?    // CASH, UPI, CARD, CREDIT
+  subtotal      Float      @default(0.0)
+  cgst          Float      @default(0.0)
+  sgst          Float      @default(0.0)
+  total         Float      @default(0.0)
+  items         BillItem[]
+  createdAt     DateTime   @default(now())
+  finalizedAt   DateTime?
+}
+
+model BillItem {
+  id                  Int      @id @default(autoincrement())
+  billId              Int
+  bill                Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  productId           Int
+  product             Product  @relation(fields: [productId], references: [id])
+  productNameSnapshot String   // Snapshot of product name
+  quantity            Int      @default(1)
+  unitPrice           Float    // Snapshot of selling price
+  gstRate             Float    @default(5.0) // Snapshot of GST rate
+  lineSubtotal        Float    @default(0.0)
+  lineCgst            Float    @default(0.0)
+  lineSgst            Float    @default(0.0)
+  lineTotal           Float    @default(0.0)
+  createdAt           DateTime @default(now())
+
+  @@unique([billId, productId])
+}
+
+model Customer {
+  id            Int                @id @default(autoincrement())
+  name          String
+  phone         String?            @unique
+  creditBalance Float              @default(0.0) // Balance owed to shop
+  transactions  KhataTransaction[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([name])
+}
+
+model KhataTransaction {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type        String   // CREDIT (added to balance owed), PAYMENT (reduced balance)
+  amount      Float
+  description String?
+  createdAt   DateTime @default(now())
+}
+
+model Preference {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+}

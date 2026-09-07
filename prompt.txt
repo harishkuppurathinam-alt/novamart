@@ -1,0 +1,917 @@
+Continue from the existing initialized project.
+
+IMPORTANT:
+Do NOT recreate the project or change the existing initialization unnecessarily.
+Implement the complete MVP now.
+
+This is an AI-powered Telegram supermarket operations agent.
+
+The bot should allow a supermarket/shop owner to operate their store through
+natural-language Telegram messages.
+
+The architecture must be:
+
+Telegram
+    ↓
+AI Agent
+    ↓
+Tools
+    ↓
+Business Services
+    ↓
+Prisma
+    ↓
+SQLite
+
+The LLM is responsible for understanding the user's request and selecting
+the appropriate tools.
+
+Do NOT implement a giant if/else intent router.
+Do NOT implement one command per business operation.
+Telegram handlers should mainly pass messages to the agent and return results.
+
+==================================================
+1. DATABASE
+==================================================
+
+Use the existing Prisma + SQLite setup.
+
+Create these models.
+
+User:
+- id
+- telegramId (unique)
+- username
+- firstName
+- lastName
+- createdAt
+- updatedAt
+
+Product:
+- id
+- name
+- description
+- sku (unique)
+- category
+- unit
+- costPrice
+- sellingPrice
+- mrp
+- gstRate
+- stockQuantity
+- reorderLevel
+- active
+- createdAt
+- updatedAt
+
+Bill:
+- id
+- billNumber (unique)
+- userId
+- customerName
+- status
+- paymentMethod
+- subtotal
+- cgst
+- sgst
+- total
+- createdAt
+- finalizedAt
+
+BillItem:
+- id
+- billId
+- productId
+- productNameSnapshot
+- quantity
+- unitPrice
+- gstRate
+- lineSubtotal
+- lineCgst
+- lineSgst
+- lineTotal
+
+Customer:
+- id
+- name
+- phone
+- creditBalance
+- createdAt
+- updatedAt
+
+KhataTransaction:
+- id
+- customerId
+- type
+- amount
+- description
+- createdAt
+
+Preference:
+- id
+- userId
+- key
+- value
+- createdAt
+- updatedAt
+
+Use enums where appropriate.
+
+Bill status:
+
+DRAFT
+FINALIZED
+CANCELLED
+
+Payment method:
+
+CASH
+UPI
+CARD
+CREDIT
+
+Khata transaction:
+
+CREDIT
+PAYMENT
+
+Make appropriate indexes and unique constraints.
+
+==================================================
+2. SEED DATA
+==================================================
+
+Create realistic Indian supermarket data.
+
+At least 20 products.
+
+Include products such as:
+
+Maggi 70g
+Amul Butter 100g
+Aashirvaad Atta 5kg
+Tata Salt 1kg
+Fortune Sunflower Oil 1L
+India Gate Basmati Rice 5kg
+Toor Dal 1kg
+Sugar 1kg
+Parle-G 800g
+Britannia Bread
+Amul Milk 1L
+Coca Cola 750ml
+Pepsi 750ml
+Lays Classic 50g
+Surf Excel 1kg
+Colgate 100g
+Lux Soap
+Dettol 250ml
+Tata Tea 250g
+Kissan Tomato Ketchup
+
+Use realistic INR prices, GST rates and stock quantities.
+
+Make at least one product intentionally low-stock so the low-stock tool
+can be demonstrated.
+
+==================================================
+3. BUSINESS SERVICES
+==================================================
+
+Implement proper services.
+
+Do not put business logic directly inside Telegram handlers.
+
+Create:
+
+inventory.service.ts
+billing.service.ts
+khata.service.ts
+preference.service.ts
+reporting.service.ts
+user.service.ts
+
+--------------------------------------------------
+Inventory service
+--------------------------------------------------
+
+Functions:
+
+searchProducts(query)
+getProduct(productId)
+getStock(productId or productName)
+receiveStock(productId, quantity, costPrice?, mrp?)
+createProduct(...)
+getLowStockProducts()
+
+Receiving stock should update inventory safely.
+
+Never allow negative stock.
+
+--------------------------------------------------
+Billing service
+--------------------------------------------------
+
+Functions:
+
+createDraftBill(...)
+getDraftBill(...)
+addBillItem(...)
+removeBillItem(...)
+updateBillItemQuantity(...)
+calculateBill(...)
+finalizeBill(...)
+
+Important:
+
+A bill starts as DRAFT.
+
+Adding/removing/updating items must NOT reduce stock.
+
+Only finalizeBill() reduces stock.
+
+finalizeBill() MUST execute atomically inside a Prisma transaction.
+
+During finalization:
+
+1. Verify bill is still DRAFT.
+2. Fetch all current products.
+3. Verify sufficient stock for every item.
+4. Calculate totals deterministically.
+5. Calculate GST in application code.
+6. Decrease stock.
+7. Snapshot product name and selling price.
+8. Mark bill FINALIZED.
+9. Store payment method.
+10. Set finalizedAt.
+
+If any product has insufficient stock:
+- reject the whole transaction
+- do not partially update stock
+- return a useful error to the agent.
+
+Never let stock become negative.
+
+Repeated finalization of an already FINALIZED bill must not create another
+sale or deduct stock again.
+
+--------------------------------------------------
+GST
+--------------------------------------------------
+
+GST calculations must NOT be performed by the LLM.
+
+Calculate them in deterministic TypeScript code.
+
+For each line:
+
+lineSubtotal = quantity × unitPrice
+
+GST is split equally:
+
+CGST = GST / 2
+SGST = GST / 2
+
+Use proper monetary rounding.
+
+Bill totals must be calculated from line items.
+
+--------------------------------------------------
+Khata service
+--------------------------------------------------
+
+Implement:
+
+findCustomer(name)
+createCustomer(name, phone?)
+addCredit(customerId, amount, description?)
+recordPayment(customerId, amount, description?)
+getBalance(customerId)
+getTransactions(customerId)
+
+Credit balance must never become negative.
+
+All credit/payment changes must be persisted.
+
+Example natural-language requests that must work:
+
+"Put 500 on Ramesh's khata"
+
+"Ramesh paid 300"
+
+"What's Ramesh's balance?"
+
+--------------------------------------------------
+Preference service
+--------------------------------------------------
+
+Implement:
+
+getPreference(userId, key)
+setPreference(userId, key, value)
+getAllPreferences(userId)
+
+Preferences must persist in SQLite.
+
+Example:
+
+"Always use UPI unless I say cash."
+
+Store:
+
+default_payment_method = UPI
+
+A new conversation/session must still be able to retrieve this preference.
+
+--------------------------------------------------
+Reporting service
+--------------------------------------------------
+
+Implement:
+
+getTodaySales()
+getSalesForPeriod(startDate, endDate)
+getTopSellingProducts()
+getPaymentBreakdown()
+getLowStockProducts()
+
+Return structured data that the agent can summarize.
+
+==================================================
+4. AGENT
+==================================================
+
+Create an agent layer.
+
+The agent should receive:
+
+- Telegram user ID
+- message
+- relevant conversation/session context
+
+The agent must decide which tools to call.
+
+Create tools for:
+
+Inventory:
+- search_products
+- get_stock
+- receive_stock
+- create_product
+- get_low_stock
+
+Billing:
+- create_draft_bill
+- add_bill_item
+- update_bill_item
+- remove_bill_item
+- get_draft_bill
+- finalize_bill
+
+Khata:
+- find_customer
+- add_credit
+- record_payment
+- get_credit_balance
+- get_credit_transactions
+
+Preferences:
+- get_preference
+- set_preference
+
+Reporting:
+- get_today_sales
+- get_sales_report
+- get_top_products
+- get_payment_breakdown
+
+Artifacts:
+- generate_invoice_pdf
+- generate_sales_analysis_pptx
+
+The tools should call the service layer.
+
+The agent must NEVER directly manipulate Prisma.
+
+==================================================
+5. AGENT SYSTEM PROMPT
+==================================================
+
+Use a concise system prompt similar to:
+
+"You are KiranaOps, an AI assistant for supermarket owners.
+
+Understand natural-language requests and use the available tools to perform
+store operations.
+
+Never invent products, prices, stock quantities, GST values, customer
+balances, sales or other business data.
+
+Always use tools for business data.
+
+Business rules are enforced by the application and database. Respect tool
+errors.
+
+Bills are drafts until explicitly finalized.
+
+Stock is deducted only during bill finalization.
+
+Never claim an operation succeeded unless the corresponding tool confirms it.
+
+Use stored preferences when appropriate.
+
+Ask a concise clarification question when required information is missing.
+
+When reporting measurements or business data, distinguish actual database
+values from estimates."
+
+==================================================
+6. MULTI-TURN BILLING
+==================================================
+
+This is a critical requirement.
+
+The following sequence MUST work:
+
+User:
+"Make a bill for 2 sugar and 4 Maggi"
+
+Agent creates a DRAFT.
+
+User:
+"Remove sugar"
+
+Agent modifies the existing draft.
+
+User:
+"Make Maggi 6"
+
+Agent updates the same draft.
+
+User:
+"Finalize with UPI"
+
+Agent finalizes the same bill.
+
+Stock is deducted ONLY at this point.
+
+The active draft bill must be persisted in the database, not only kept in
+LLM memory.
+
+If the process restarts, the draft should still exist.
+
+==================================================
+7. NATURAL LANGUAGE OPERATIONS
+==================================================
+
+These should work without slash commands.
+
+Inventory:
+
+"How much Maggi is left?"
+
+"50 packets of Maggi came in, cost 12 each and MRP is 14."
+
+"What products are running low?"
+
+Billing:
+
+"Make a bill for 2 sugar and 4 Maggi."
+
+"Remove sugar."
+
+"Change Maggi to 6."
+
+"Finalize with UPI."
+
+Khata:
+
+"Put 500 on Ramesh's khata."
+
+"Ramesh paid 300."
+
+"What's Ramesh's balance?"
+
+Preferences:
+
+"Always use UPI unless I say cash."
+
+Reports:
+
+"What were today's sales?"
+
+"What did we sell the most today?"
+
+"How much did we collect through UPI?"
+
+Artifacts:
+
+"Send me the invoice as PDF."
+
+"Generate this week's sales analysis."
+
+==================================================
+8. OVERSelling TEST
+==================================================
+
+This MUST work.
+
+Seed Maggi with a known stock quantity.
+
+User:
+
+"Make a bill for 100 Maggi."
+
+If stock is insufficient:
+
+- tool must reject it
+- bill must not finalize
+- stock must not become negative
+- agent must clearly explain available stock
+
+Example response:
+
+"I can't finalize that sale. Maggi has only 6 units in stock,
+but the bill requests 100."
+
+Do not rely on the LLM prompt to enforce this.
+The service/database transaction must enforce it.
+
+==================================================
+9. IDEMPOTENCY
+==================================================
+
+Telegram can deliver the same update more than once.
+
+Design the bot so duplicate Telegram updates do not create duplicate
+business operations.
+
+Track processed Telegram update IDs or use an equivalent reliable mechanism.
+
+Finalizing an already finalized bill must be safe.
+
+Never deduct stock twice.
+
+==================================================
+10. TELEGRAM
+==================================================
+
+Use grammY.
+
+The Telegram layer should support:
+
+/start
+/help
+/new
+
+But normal operations should work through natural-language messages.
+
+/start should explain that the user can operate the supermarket using
+natural language.
+
+Example:
+
+"👋 Welcome to KiranaOps.
+
+I can help you manage inventory, bills, khata and sales.
+
+Try:
+
+• How much Maggi is left?
+• Receive 20 Maggi
+• Make a bill for 2 sugar and 4 Maggi
+• What's Ramesh's balance?
+• Show today's sales"
+
+The /new command should reset conversational context only.
+
+It MUST NOT delete:
+- products
+- stock
+- bills
+- customers
+- khata
+- preferences
+
+==================================================
+11. CONVERSATION STATE
+==================================================
+
+Keep conversation state separate from persistent business data.
+
+Conversation state can contain:
+- current conversation messages
+- active intent/context
+- current draft reference if needed
+
+Persistent DB contains:
+- products
+- stock
+- bills
+- customers
+- khata
+- preferences
+
+After /new, the agent should still retrieve persistent information.
+
+==================================================
+12. PDF INVOICE
+==================================================
+
+Implement generate_invoice_pdf(billId).
+
+Generate a proper GST invoice PDF.
+
+Include:
+
+KiranaOps / store name
+Invoice number
+Date
+Customer
+Items
+Quantity
+Unit price
+Subtotal
+CGST
+SGST
+Total
+Payment method
+
+Send the generated PDF to the user through Telegram.
+
+Use a proper PDF library.
+
+Do not generate a fake text file with .pdf extension.
+
+==================================================
+13. PPTX SALES ANALYSIS
+==================================================
+
+Implement generate_sales_analysis_pptx(period).
+
+Generate a real PPTX with at least 3 slides.
+
+Slide 1:
+Sales overview
+- total sales
+- number of bills
+- GST collected
+
+Slide 2:
+Top-selling products
+- real data
+- chart
+
+Slide 3:
+Inventory / business insights
+- low-stock products
+- payment breakdown
+- useful observations
+
+Use actual database data.
+
+Send the PPTX through Telegram.
+
+==================================================
+14. TELEGRAM UX
+==================================================
+
+Keep responses concise and professional.
+
+Use emojis sparingly.
+
+Example:
+
+"📦 Stock updated.
+
+Maggi 70g
+Previous stock: 6
+Received: 20
+Current stock: 26"
+
+For draft bills:
+
+"🧾 Draft Bill #SM-10001
+
+Maggi × 6       ₹84
+Sugar × 2       ₹90
+
+Subtotal: ₹174
+CGST: ₹4.35
+SGST: ₹4.35
+Total: ₹182.70
+
+Status: DRAFT
+
+Say 'finalize with UPI' to complete the sale."
+
+==================================================
+15. ERROR HANDLING
+==================================================
+
+Handle gracefully:
+
+- product not found
+- ambiguous product
+- insufficient stock
+- invalid quantity
+- invalid payment method
+- missing bill
+- missing customer
+- duplicate operation
+- empty bill
+- database error
+- PDF generation error
+- PPTX generation error
+- Telegram API errors
+
+Never expose stack traces to the Telegram user.
+
+Log useful technical details to the server console.
+
+==================================================
+16. SECURITY
+==================================================
+
+- Never expose BOT_TOKEN.
+- Never commit .env.
+- Validate all tool arguments.
+- Validate quantities and monetary values.
+- Never trust LLM-generated IDs without checking them.
+- Use database transactions for financial/inventory mutations.
+- Do not allow arbitrary SQL from the model.
+
+==================================================
+17. TESTING
+==================================================
+
+Create tests for the most important business logic.
+
+At minimum test:
+
+1. Product search
+2. Receive stock
+3. Add bill item
+4. Update bill item
+5. Remove bill item
+6. GST calculation
+7. Successful bill finalization
+8. Oversell rejection
+9. Atomic rollback on failed finalization
+10. Duplicate finalization
+11. Khata credit
+12. Khata payment
+13. Preference persistence
+14. Sales calculation
+
+The tests should test services/business logic rather than trying to mock
+the entire Telegram platform.
+
+==================================================
+18. README
+==================================================
+
+Update README with:
+
+Project overview
+
+Architecture diagram:
+
+Telegram
+→ Agent
+→ Tools
+→ Services
+→ Prisma
+→ SQLite
+
+Why an agent is used.
+
+Tool list.
+
+Database schema overview.
+
+Business rule enforcement.
+
+How overselling is prevented.
+
+How GST is calculated.
+
+How multi-turn draft billing works.
+
+How idempotency works.
+
+How persistent preferences work.
+
+How to run locally.
+
+Environment variables.
+
+How to seed the database.
+
+How to start the bot.
+
+Example natural-language commands.
+
+==================================================
+19. QUALITY REQUIREMENTS
+==================================================
+
+Use TypeScript strict mode.
+
+Keep code modular.
+
+Use async/await correctly.
+
+Do not duplicate business logic.
+
+Do not put Prisma queries everywhere.
+
+Do not put business logic inside Telegram callbacks.
+
+Do not create unnecessary abstractions.
+
+Do not add a frontend.
+
+Do not add payment gateway integration.
+
+Do not add authentication systems.
+
+Do not add microservices.
+
+Do not add Docker unless already required by the existing setup.
+
+This is an MVP and the priority is correctness and a strong demonstration
+of agent orchestration.
+
+==================================================
+20. FINAL VALIDATION
+==================================================
+
+After implementation:
+
+1. Install dependencies.
+2. Validate Prisma schema.
+3. Run migrations.
+4. Seed database.
+5. Run tests.
+6. Run TypeScript build.
+7. Start the bot.
+8. Fix all errors.
+
+Then manually verify this exact demo:
+
+A.
+"How much Maggi is left?"
+
+B.
+"50 packets of Maggi came in, cost 12 each and MRP is 14."
+
+C.
+"Make a bill for 2 sugar and 4 Maggi."
+
+D.
+"Remove sugar and make Maggi 6."
+
+E.
+"Finalize with UPI."
+
+F.
+"Send me the invoice as PDF."
+
+G.
+"Put 500 on Ramesh's khata."
+
+H.
+"Ramesh paid 300."
+
+I.
+"What's Ramesh's balance?"
+
+J.
+"Always use UPI unless I say cash."
+
+K.
+"Give me today's sales."
+
+L.
+"Generate this week's sales analysis."
+
+M.
+Try to sell more Maggi than available stock and verify rejection.
+
+N.
+Use /new and verify the stored UPI preference still works.
+
+Do not merely report problems.
+Fix the implementation and rerun validation.
+
+At the end, report:
+- implemented features
+- files created/modified
+- database models
+- tools available to the agent
+- test results
+- build result
+- how to run the bot
+- any remaining limitations
+
+Do not stop at a plan. Implement the complete working MVP.
